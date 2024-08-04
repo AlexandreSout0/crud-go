@@ -134,3 +134,82 @@ func CriarUsuario(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Usuário inserido com sucesso: Id: %d", idInserido)))
 
 }
+
+func AtualizarUsuarios(w http.ResponseWriter, r *http.Request) {
+	parametros := mux.Vars(r)
+	ID, erro := strconv.ParseUint(parametros["id"], 10, 32)
+	if erro != nil {
+		w.Write([]byte("Erro ao converter parametro"))
+		return
+	}
+
+	corpoRequisicao, erro := io.ReadAll(r.Body)
+	if erro != nil {
+		w.Write([]byte("Falha ao ler o corpo da requisição"))
+		return
+	}
+
+	var usuario usuario
+	erro = json.Unmarshal(corpoRequisicao, &usuario)
+	if erro != nil {
+		w.Write([]byte("Erro ao converter o usuário para struct"))
+		return
+	}
+	db, erro := database.InitDB()
+	if erro != nil {
+		log.Println("Erro ao estabelecer conexão com o banco de dados:", erro)
+		w.Write([]byte("Erro ao estabelecer conexão com o banco de dados"))
+		return
+	}
+	defer db.Close()
+	query := "UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id"
+	var idInserido uint32
+	err := db.QueryRow(query, usuario.Name, usuario.Email, ID).Scan(&idInserido)
+	if err != nil {
+		log.Println("Erro ao executar o statement:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Erro ao executar o statement"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func DeletarUsuario(w http.ResponseWriter, r *http.Request) {
+	parametros := mux.Vars(r)
+	ID, erro := strconv.ParseUint(parametros["id"], 10, 32)
+	if erro != nil {
+		w.Write([]byte("Erro ao converter parametro"))
+		return
+	}
+
+	db, erro := database.InitDB()
+	if erro != nil {
+		log.Println("Erro ao estabelecer conexão com o banco de dados:", erro)
+		w.Write([]byte("Erro ao estabelecer conexão com o banco de dados"))
+		return
+	}
+	defer db.Close()
+	query := "DELETE FROM users WHERE id = $1"
+	result, err := db.Exec(query, ID)
+	if err != nil {
+		log.Println("Erro ao executar o statement:", err)
+		w.Write([]byte("Erro ao executar o statement"))
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Println("Erro ao obter o número de linhas afetadas:", err)
+		w.Write([]byte("Erro ao obter o número de linhas afetadas"))
+		return
+	}
+
+	if rowsAffected == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Usuário não encontrado"))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+
+}
